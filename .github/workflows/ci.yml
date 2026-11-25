@@ -128,3 +128,31 @@ jobs:
         run: |
           docker push "${IMAGE_NAME}:${GITHUB_SHA}"
           docker push "${IMAGE_NAME}:latest"
+
+  deploy:
+    needs: image
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: [self-hosted, devops-vm]
+    permissions:
+      contents: read
+    concurrency:
+      group: deploy-devops-vm
+      cancel-in-progress: false
+    env:
+      VM_HOST: 127.0.0.1
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Deploy with Ansible
+        working-directory: ansible
+        run: |
+          ansible-playbook site.yml -e "app_tag=${{ github.sha }}"
+
+      - name: Check through Nginx
+        run: |
+          # Проверяем напрямую через проброшенный порт 8080
+          # Ключ -f (fail) заставит curl вернуть ошибку, если код ответа не 2xx
+          curl -s -f http://127.0.0.1:8080/health
